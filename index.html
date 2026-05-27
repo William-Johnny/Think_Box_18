@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>RFID Video Player</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: #111;
+            color: white;
+            font-family: Arial, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #tuto {
+            position: absolute;
+            text-align: center;
+            z-index: 10;
+        }
+
+        #videoPlayer {
+            display: none;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            background: black;
+        }
+
+        #choice {
+            width: 75%;
+            position: absolute;
+            bottom: 30px;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            z-index: 20;
+        }
+
+        #title {
+            font-size: 1.3rem;
+            margin-bottom: 25px;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        #timer {
+            margin-bottom: 15px;
+            font-size: 1rem;
+            text-align: right;
+        }
+
+        #options {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        #options > div {
+            flex: 1;
+            font-size: large;
+            padding: 20px;
+            background: #374151;
+            border-radius: 10px;
+            text-align: center;
+            border: 2px solid transparent;
+            transition: 0.3s;
+        }
+
+        #options > div:hover {
+            border-color: white;
+        }
+
+        .progress-container {
+            width: 100%;
+            height: 10px;
+            background: #374151;
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background-color: red;
+            transition: width 1s linear;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1 id="tuto">Placez un préjugé sur le socle</h1>
+
+    <video id="videoPlayer" autoplay playsinline>
+        <source id="videoSource" src="" type="video/mp4">
+        Votre navigateur ne supporte pas la vidéo.
+    </video>
+
+    <div id="choice">
+        <div id="title"></div>
+
+        <div id="timer">10s</div>
+
+        <div id="options">
+            <div id="option1"></div>
+            <div id="option2"></div>
+        </div>
+
+        <div class="progress-container">
+            <div class="progress-bar" id="progress"></div>
+        </div>
+    </div>
+
+    <script>
+        let canDisplayChoice = true;
+
+        const SERVER_IP = "192.168.10.149";
+        const SERVER_PORT = 8080;
+
+        const CLIENT_NAME = "HTMLPage";
+
+        const videoMap = {
+            "0xaf4b1c1c": {
+                src: "videos/No_Heroes_finalDraft.mp4",
+
+                timeToChoice: 13000,
+
+                title:
+                    "Une victime est au bout du couloir mais le toit menace de s'effondrer et une présence de flammes dans les fumées indique qu’un risque d’explosion est important.",
+
+                one: {
+                    src: "videos/No_Heroes_option1.mp4",
+                    txt: "Sauver la victime"
+                },
+
+                two: {
+                    src: "videos/No_Heroes_option2.mp4",
+                    txt: "Se replier"
+                }
+            }
+        };
+
+        const videoPlayer = document.getElementById("videoPlayer");
+        const videoSource = document.getElementById("videoSource");
+
+        const choiceContainer = document.getElementById("choice");
+
+        const title = document.getElementById("title");
+        const option1 = document.getElementById("option1");
+        const option2 = document.getElementById("option2");
+
+        const progressBar = document.getElementById("progress");
+        const timerText = document.getElementById("timer");
+
+        const tuto = document.getElementById("tuto");
+
+        function playVideo(videoPath) {
+
+            hideChoices();
+
+            videoPlayer.style.display = "block";
+
+            videoSource.src = videoPath;
+
+            videoPlayer.load();
+
+            videoPlayer.play().catch(err => {
+                console.error("Video play error:", err);
+            });
+        }
+
+        let choiceTimeout;
+
+        function showChoices(videoData) {
+
+            if (!canDisplayChoice) return;
+
+            title.textContent = videoData.title;
+
+            option1.textContent = videoData.one.txt;
+            option2.textContent = videoData.two.txt;
+
+            choiceContainer.style.display = "flex";
+
+            startTimer();
+        }
+
+        function hideChoices() {
+            choiceContainer.style.display = "none";
+            resetTimer();
+        }
+
+        const totalTime = 10;
+
+        let timeLeft = totalTime;
+
+        let interval;
+
+        function startTimer() {
+
+            clearInterval(interval);
+
+            timeLeft = totalTime;
+
+            progressBar.style.width = "0%";
+
+            timerText.textContent = `${timeLeft}s`;
+
+            interval = setInterval(() => {
+
+                timeLeft--;
+
+                const percent =
+                    ((totalTime - timeLeft) / totalTime) * 100;
+
+                progressBar.style.width = percent + "%";
+
+                timerText.textContent = `${timeLeft}s`;
+
+                if (timeLeft <= 0) {
+
+                    clearInterval(interval);
+
+                    timerText.textContent = "Temps écoulé";
+
+                    displayFailScreen();
+                }
+
+            }, 1000);
+        }
+
+        function resetTimer() {
+
+            clearInterval(interval);
+
+            timeLeft = totalTime;
+
+            progressBar.style.width = "0%";
+
+            timerText.textContent = `${totalTime}s`;
+        }
+
+        function displayFailScreen() {
+
+            videoPlayer.pause();
+
+            hideChoices();
+
+            let failScreen = document.getElementById("failScreen");
+
+            if (!failScreen) {
+
+                failScreen = document.createElement("div");
+
+                failScreen.id = "failScreen";
+
+                failScreen.style.position = "absolute";
+                failScreen.style.top = "0";
+                failScreen.style.left = "0";
+                failScreen.style.width = "100%";
+                failScreen.style.height = "100%";
+
+                failScreen.style.background = "rgba(0,0,0,0.92)";
+                failScreen.style.display = "flex";
+                failScreen.style.flexDirection = "column";
+                failScreen.style.alignItems = "center";
+                failScreen.style.justifyContent = "center";
+
+                failScreen.style.zIndex = "999";
+
+                failScreen.innerHTML = `
+                    <h1 style="
+                        font-size: 4rem;
+                        color: red;
+                        margin-bottom: 20px;
+                        text-transform: uppercase;
+                    ">
+                        ÉCHEC
+                    </h1>
+
+                    <p style="
+                        font-size: 1.5rem;
+                        max-width: 700px;
+                        text-align: center;
+                        color: white;
+                        margin-bottom: 40px;
+                    ">
+                        Vous n'avez pas pris de décision à temps.
+                    </p>
+
+                    <div id="failCountdown" style="
+                        font-size: 2rem;
+                        color: #aaa;
+                    ">
+                        Retour dans 5s
+                    </div>
+                `;
+
+                document.body.appendChild(failScreen);
+            }
+
+            failScreen.style.display = "flex";
+
+            // Countdown before reset
+            let countdown = 5;
+
+            const countdownText =
+                document.getElementById("failCountdown");
+
+            const failInterval = setInterval(() => {
+
+                countdown--;
+
+                countdownText.textContent =
+                    `Retour dans ${countdown}s`;
+
+                if (countdown <= 0) {
+
+                    clearInterval(failInterval);
+
+                    // Hide fail screen
+                    failScreen.style.display = "none";
+
+                    // Reset interface
+                    videoPlayer.style.display = "none";
+
+                    tuto.style.display = "block";
+
+                    videoPlayer.pause();
+                    videoPlayer.currentTime = 0;
+
+                    videoSource.src = "";
+                }
+
+            }, 1000);
+        }
+
+        let socket;
+
+        function connectWebSocket() {
+
+            socket = new WebSocket(
+                `ws://${SERVER_IP}:${SERVER_PORT}`
+            );
+
+            socket.onopen = () => {
+
+                console.log("Connected to server");
+
+                socket.send(JSON.stringify({
+                    client_name: CLIENT_NAME
+                }));
+            };
+
+            socket.onmessage = (event) => {
+
+                try {
+
+                    const data = JSON.parse(event.data);
+
+                    console.log("Received:", data);
+
+                    if (!data.uid) return;
+
+                    const uid = data.uid;
+
+                    if (!videoMap[uid]) {
+                        console.log(`No video mapped for UID: ${uid}`);
+                        return;
+                    }
+
+                    const currentVideo = videoMap[uid];
+
+                    if (!data.optionId) {
+
+                        canDisplayChoice = true;
+
+                        tuto.style.display = "none";
+
+                        playVideo(currentVideo.src);
+
+                        clearTimeout(choiceTimeout);
+
+                        choiceTimeout = setTimeout(() => {
+
+                            showChoices(currentVideo);
+
+                        }, currentVideo.timeToChoice);
+                    }
+
+                    else {
+
+                        const optionId = data.optionId;
+
+                        if (currentVideo[optionId]) {
+
+                            canDisplayChoice = false;
+
+                            clearTimeout(choiceTimeout);
+
+                            hideChoices();
+
+                            playVideo(currentVideo[optionId].src);
+
+                        } else {
+
+                            console.log(
+                                `No video mapped for optionId: ${optionId}`
+                            );
+                        }
+                    }
+
+                } catch (err) {
+
+                    console.error("Invalid JSON received:", err);
+                }
+            };
+
+            socket.onclose = () => {
+
+                console.log("Disconnected from server");
+
+                // Auto reconnect after 3s
+                setTimeout(() => {
+                    connectWebSocket();
+                }, 3000);
+            };
+
+            socket.onerror = (err) => {
+
+                console.error("WebSocket error:", err);
+            };
+        }
+
+        // =========================
+        // START
+        // =========================
+
+        connectWebSocket();
+
+    </script>
+
+</body>
+</html>
